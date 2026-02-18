@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Direct Edit Invoice - Samyak Jain</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --paper-color: #fdfbf7; 
+      --ink-primary: #1a1a1a;
+      --ink-secondary: #555555;
+      --gold-accent: #c5a059;
+      --font-serif: "Playfair Display", serif;
+      --font-sans: "Inter", sans-serif;
+      --font-sig: "Great Vibes", cursive;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body{
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: var(--font-sans);
+      background: #525659;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* --- Floating Top Toolbar --- */
+    .top-toolbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      min-height: 60px;
+      background: #ffffff;
+      border-bottom: 1px solid #ccc;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 30px;
+      z-index: 1000;
+      gap: 15px;
+    }
+
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    .toolbar-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #555; }
+    
+    select, input[type="number"] {
+      padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
+    }
+    select:focus, input:focus { border-color: var(--gold-accent); }
+
+    button {
+      border: 1px solid #ddd; padding: 8px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+      cursor: pointer; transition: 0.2s; border-radius: 4px; white-space: nowrap;
+    }
+    button.success { background: #f0fff4; color: #3a5a40; border-color: #ccffdd; }
+    button.success:hover { background: #e0f8e9; }
+    button.primary { background: var(--ink-primary); color: #fff; border-color: var(--ink-primary); }
+    button.primary:hover { background: #000; }
+    button.accent { background: #fff8e6; color: #8a6a27; border-color: #ffe099; }
+    button.accent:hover { background: #ffedcc; }
+
+    .divider { width: 1px; height: 30px; background: #eee; margin: 0 5px; }
+
+    /* --- Document Area --- */
+    .preview-wrap {
+      padding: 100px 40px 40px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+
+    /* THE PAGE - Fixed A4 Dimensions */
+    .pdf-page {
+      width: 210mm;
+      height: 297mm;
+      background: var(--paper-color);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      position: relative;
+      flex-shrink: 0;
+      overflow: hidden; 
+    }
+
+    .page-pad {
+      padding: 15mm 20mm; 
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* --- WYSIWYG Editable Styling --- */
+    .editable, .editable-block {
+      outline: none;
+      transition: all 0.2s;
+      border-radius: 2px;
+    }
+    .editable { border-bottom: 1px dashed rgba(197, 160, 89, 0.4); display: inline-block; min-width: 15px; }
+    .editable-block { border: 1px dashed rgba(197, 160, 89, 0.4); padding: 2px 4px; margin: -3px -5px; }
+    
+    .editable:hover, .editable-block:hover, 
+    .editable:focus, .editable-block:focus {
+      background-color: rgba(255, 255, 255, 0.8);
+      border-color: var(--gold-accent);
+      cursor: text;
+    }
+
+    /* Hide editable styling during PDF export */
+    body.exporting .editable, body.exporting .editable-block {
+      border-color: transparent !important;
+      background-color: transparent !important;
+      padding: 0 !important; margin: 0 !important;
+    }
+
+    /* --- PDF Content Styling --- */
+    .top-row{ display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 2px solid var(--gold-accent); padding-bottom: 20px; }
+    .consultant-name{ font-family: var(--font-serif); font-size: 32px; font-weight: 700; color: var(--ink-primary); }
+    .consultant-role{ font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--gold-accent); font-weight: 700; margin-top: 5px; }
+    
+    .invoice-meta{ text-align: right; }
+    .meta-line{ font-size: 11px; margin-bottom: 3px; color: var(--ink-secondary); }
+    .meta-line strong{ color: var(--ink-primary); margin-right: 5px; }
+
+    .invoice-title-watermark{
+      position: absolute; top: 30px; right: 40px;
+      font-family: var(--font-serif); font-size: 50px; color: rgba(0,0,0,0.03);
+      pointer-events: none; letter-spacing: 5px;
+    }
+
+    /* Address Blocks */
+    .party-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+    .section-label{ font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--gold-accent); font-weight: 700; margin-bottom: 8px; border-bottom: 1px solid #eee; display: inline-block; padding-bottom: 2px; }
+    .addr-text{ white-space: pre-wrap; font-family: var(--font-serif); font-size: 13px; line-height: 1.5; color: var(--ink-secondary); }
+
+    /* Tables */
+    table{ width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 20px; }
+    th{ text-align: left; font-size: 9px; text-transform: uppercase; color: var(--ink-primary); border-bottom: 1px solid var(--gold-accent); padding: 8px 5px; letter-spacing: 1px; }
+    td{ border-bottom: 1px solid #eee; padding: 10px 5px; font-family: var(--font-serif); font-size: 13px; color: var(--ink-secondary); vertical-align: top; word-wrap: break-word; }
+    
+    .num{ text-align: right; font-family: var(--font-sans); font-weight: 500; }
+    
+    /* Column Widths */
+    .col-desc{ width: 55%; }
+    .col-rate{ width: 15%; }
+    .col-hrs{ width: 10%; }
+    .col-tot{ width: 20%; }
+
+    .ts-date{ width: 20%; }
+    .ts-notes{ width: 65%; }
+    .ts-hrs{ width: 15%; font-weight: 600; }
+
+    /* Totals Section */
+    .totals-area{ margin-top: 10px; display: flex; justify-content: flex-end; border-top: 3px double var(--gold-accent); padding-top: 15px; }
+    .total-line{ display: flex; gap: 30px; align-items: baseline; }
+    .total-label{ font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .total-val{ font-family: var(--font-serif); font-size: 24px; font-weight: 700; color: var(--ink-primary); }
+
+    /* Footer */
+    .footer-box{ margin-top: auto; background: #f9f9f9; padding: 15px 20px; border-left: 3px solid var(--gold-accent); font-size: 11px; color: #555; }
+
+    /* Signature */
+    .sig-block{ margin-top: auto; display: flex; justify-content: flex-end; padding-top: 20px; gap: 40px; border-top: 1px solid #000; }
+    .sig-item{ text-align: center; min-width: 150px; }
+    .sig-img{ font-family: var(--font-sig); font-size: 32px; color: #000; margin-bottom: 0px; }
+    .sig-sub{ border-top: 1px solid #ccc; font-size: 9px; text-transform: uppercase; color: #888; padding-top: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="top-toolbar" data-html2canvas-ignore="true">
+  <div class="toolbar-group">
+    <label>Cycle:</label>
+    <select id="genMonth">
+      <option value="0">Jan</option><option value="1">Feb</option>
+      <option value="2">Mar</option><option value="3">Apr</option>
+      <option value="4">May</option><option value="5">Jun</option>
+      <option value="6">Jul</option><option value="7">Aug</option>
+      <option value="8">Sep</option><option value="9">Oct</option>
+      <option value="10">Nov</option><option value="11">Dec</option>
+    </select>
+    <input type="number" id="genYear" value="2026" style="width: 70px;">
+    <button id="autoGenBtn" class="success">Refresh Grid</button>
+  </div>
+  
+  <div class="divider"></div>
+
+  <div class="toolbar-group">
+    <label>Target Amount:</label>
+    <span style="font-weight:600; color:#555;">$</span>
+    <input type="number" id="targetAmount" placeholder="e.g. 2400" style="width: 90px;">
+    <button id="adjustBtn" class="accent">American Pattern Distribute</button>
+  </div>
+
+  <div class="toolbar-group" style="margin-left: auto;">
+    <span style="font-size:11px; color:#888; margin-right:10px;">* Click any text below to edit</span>
+    <button id="downloadBtn" class="primary">Download High-Res PDF</button>
+  </div>
+</div>
+
+<main class="preview-wrap" id="previewStack"></main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+  /* --- STATE MANAGEMENT --- */
+  const state = {
+    myName: "Samyak Jain",
+    myRole: "Consultant",
+    invNum: "INVOICE-11",
+    invDate: new Date().toISOString().split('T')[0],
+    fromAddr: "Samyak Jain\nLalitpur, India\nkumarsamyakjain@gmail.com\n+91 9682058805",
+    toAddr: "Arpana Gupta, Dds And Sambhav Jain, Dds, Inc.\nCenter for Implant Dentistry\n3381, Walnut Avenue\nFremont, CA 94538\ninfo@bayareaimplantdentistry.com\n+1 (510) 574-0496",
+    itemDesc: "Consulting Services (See attached log)",
+    rate: 11, // DEFAULT RATE $11
+    timesheet: [],
+    bankDetails: "Bank: ICICI BANK\nAccount: 744901000131\nBranch: Lalitpur, India\nSWIFT: ICICINBBNRI",
+    sigName: "Samyak Jain"
+  };
+
+  /* --- INITIALIZATION --- */
+  function init(){
+    const today = new Date();
+    let m = today.getMonth();
+    let y = today.getFullYear();
+    
+    if (today.getDate() < 11) {
+      m = m - 1;
+      if (m < 0) { m = 11; y = y - 1; }
+    }
+    
+    document.getElementById('genMonth').value = m;
+    document.getElementById('genYear').value = y;
+
+    document.getElementById('autoGenBtn').onclick = autoGenerate;
+    document.getElementById('downloadBtn').onclick = downloadPDF;
+    document.getElementById('adjustBtn').onclick = autoAdjustHours; 
+    
+    autoGenerate();
+  }
+
+  /* --- LOGIC: GENERATE TIMESHEET --- */
+  function autoGenerate(){
+    const m = parseInt(document.getElementById('genMonth').value);
+    const y = parseInt(document.getElementById('genYear').value);
+    
+    let current = new Date(y, m, 11);
+    let end = new Date(y, m + 1, 10);
+    
+    const newRows = [];
+    while(current <= end){
+      const yearStr = current.getFullYear();
+      const monthStr = String(current.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(current.getDate()).padStart(2, '0');
+      
+      const isSunday = current.getDay() === 0;
+      
+      newRows.push({
+        date: `${yearStr}-${monthStr}-${dayStr}`,
+        notes: isSunday ? "HOLIDAY" : "", 
+        hours: isSunday ? 0 : 8 // Start at standard 8
+      });
+      current.setDate(current.getDate() + 1);
+    }
+
+    state.timesheet = newRows;
+    renderDocument(); 
+  }
+
+  /* --- THE BULLETPROOF AMERICAN HOURS ALGORITHM --- */
+  function autoAdjustHours() {
+    const targetVal = parseFloat(document.getElementById('targetAmount').value);
+    if (isNaN(targetVal) || targetVal <= 0) {
+      alert("Please enter a valid target amount first.");
+      return;
+    }
+
+    const currentRate = state.rate || 11;
+    // Lock precision to 0.5 increments
+    let targetHours = Math.round((targetVal / currentRate) * 2) / 2;
+    
+    let workingDays = state.timesheet.filter(d => d.notes !== "HOLIDAY");
+    const N = workingDays.length;
+
+    if (N < 10) {
+      alert("Not enough working days to fulfill the minimum frequency requirements.");
+      return;
+    }
+
+    // Step 1: Constraint check to guarantee the mandatory minimums (at least two of each number)
+    const MIN_HOURS = (7 * (N - 10)) + 80; // 80 is the sum of [7,7, 7.5,7.5, 8,8, 8.5,8.5, 9,9]
+    const MAX_HOURS = (9 * (N - 10)) + 80; 
+
+    let capped = false;
+    if (targetHours > MAX_HOURS) {
+        targetHours = MAX_HOURS;
+        capped = true;
+    } else if (targetHours < MIN_HOURS) {
+        targetHours = MIN_HOURS;
+        capped = true;
+    }
+
+    // Step 2: The Mandatory Locked Array (Guarantees every number appears exactly twice)
+    const lockedBase = [7, 7, 7.5, 7.5, 8, 8, 8.5, 8.5, 9, 9];
+    
+    // Step 3: The Priority Flexible Array (Defaults completely to 8)
+    let flexBase = Array(N - 10).fill(8);
+    
+    let currentTotal = 80 + (8 * flexBase.length);
+    let diff = Math.round((targetHours - currentTotal) * 2) / 2;
+
+    // Absorb the Difference using strictly 9s and 7s (Ensuring 7.5 and 8.5 remain exceedingly rare)
+    for (let i = 0; i < flexBase.length && diff >= 1; i++) {
+        flexBase[i] = 9;
+        diff -= 1;
+    }
+    for (let i = 0; i < flexBase.length && diff <= -1; i++) {
+        flexBase[i] = 7;
+        diff += 1;
+    }
+    
+    // If a fractional 0.5 remains, handle it EXACTLY ONCE
+    if (diff === 0.5) {
+        let idx = flexBase.findIndex(x => x === 8);
+        if (idx !== -1) { flexBase[idx] = 8.5; diff -= 0.5; }
+    } else if (diff === -0.5) {
+        let idx = flexBase.findIndex(x => x === 8);
+        if (idx !== -1) { flexBase[idx] = 7.5; diff += 0.5; }
+    }
+
+    // Combine Arrays
+    let finalHours = [...lockedBase, ...flexBase];
+
+    // Helper: Random Shuffler
+    const shuffle = (arr) => {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    };
+
+    // Step 4: Chronological Routing (American Working Pattern)
+    // Initial days get 8, 7.5, 8.5. Ending days get 9, 7.
+    shuffle(finalHours); // Pre-shuffle to randomize overflow elements
+    
+    let initialPool = [];
+    let endPool = [];
+    let halfPoint = Math.ceil(N / 2);
+
+    finalHours.forEach(val => {
+        let prefersInitial = (val === 8 || val === 7.5 || val === 8.5);
+        if (prefersInitial) {
+            if (initialPool.length < halfPoint) {
+                initialPool.push(val);
+            } else {
+                endPool.push(val);
+            }
+        } else {
+            // prefers End (9s and 7s)
+            if (endPool.length < Math.floor(N / 2)) {
+                endPool.push(val);
+            } else {
+                initialPool.push(val);
+            }
+        }
+    });
+
+    // Final shuffle inside their respective chronological zones
+    shuffle(initialPool);
+    shuffle(endPool);
+    
+    let chronologicallySortedHours = [...initialPool, ...endPool];
+
+    // Apply to Working Days
+    workingDays.forEach((d, i) => {
+        d.hours = chronologicallySortedHours[i];
+    });
+
+    // Render updates
+    renderDocument();
+    updateMath();
+
+    // Alerts
+    const newAmount = targetHours * currentRate;
+    if (Math.abs(newAmount - targetVal) > 0.01) {
+        if (capped) {
+            alert(`Because all required numbers (7, 7.5, 8, 8.5, 9) must appear at least twice, the mathematical maximum possible amount is capped.\n\nAdjusted Target: $${newAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} (${targetHours} total hours)`);
+        } else {
+            alert(`Target was safely adjusted to the nearest valid 0.5 increment to keep hours realistic.\n\nNew Target: $${newAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} (${targetHours} total hours)`);
+        }
+    }
+  }
+
+  /* --- MATH AUTO-SYNC LOGIC --- */
+  window.updateMath = () => {
+    const totalHours = state.timesheet.reduce((sum, row) => sum + (parseFloat(row.hours)||0), 0);
+    const amount = (state.rate || 0) * totalHours;
+
+    document.querySelectorAll('.sync-total-hrs').forEach(el => {
+        el.textContent = totalHours.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    });
+    
+    document.querySelectorAll('.sync-amount').forEach(el => {
+      el.textContent = '$' + amount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    });
+  };
+
+  window.handleHourChange = (idx, el) => {
+    let val = parseFloat(el.textContent.replace(/[^0-9.]/g, ''));
+    state.timesheet[idx].hours = isNaN(val) ? 0 : val;
+    updateMath(); 
+  };
+
+  window.handleRateChange = (el) => {
+    let val = parseFloat(el.textContent.replace(/[^0-9.]/g, ''));
+    state.rate = isNaN(val) ? 0 : val;
+    updateMath(); 
+  };
+
+  /* --- RENDER DOCUMENT (WYSIWYG TEMPLATE) --- */
+  function renderDocument(){
+    const stack = document.getElementById('previewStack');
+    stack.innerHTML = '';
+
+    const totalHours = state.timesheet.reduce((s, r) => s + (parseFloat(r.hours)||0), 0);
+    const amount = state.rate * totalHours;
+
+    // ----- PAGE 1: INVOICE HEADER -----
+    const page1 = document.createElement('div');
+    page1.className = 'pdf-page';
+    page1.innerHTML = `
+      <div class="page-pad">
+        <div class="invoice-title-watermark">INVOICE</div>
+        
+        <div class="top-row">
+          <div>
+            <div class="consultant-name editable-block" contenteditable="true" onblur="state.myName=this.innerText">${state.myName}</div>
+            <div class="consultant-role editable-block" contenteditable="true" onblur="state.myRole=this.innerText">${state.myRole}</div>
+          </div>
+          <div class="invoice-meta">
+            <div class="meta-line"><strong>Reference:</strong> <span class="editable" contenteditable="true">${state.invNum}</span></div>
+            <div class="meta-line"><strong>Issued:</strong> <span class="editable" contenteditable="true">${state.invDate}</span></div>
+          </div>
+        </div>
+
+        <div class="party-grid">
+          <div>
+            <div class="section-label">From</div>
+            <div class="addr-text editable-block" contenteditable="true">${state.fromAddr}</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="section-label">Bill To</div>
+            <div class="addr-text editable-block" contenteditable="true" style="text-align:right;">${state.toAddr}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="col-desc">Description</th>
+              <th class="col-rate num">Rate</th>
+              <th class="col-hrs num">Hours</th>
+              <th class="col-tot num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-desc"><div class="editable-block" contenteditable="true">${state.itemDesc}</div></td>
+              <td class="col-rate num">$<span class="editable" contenteditable="true" oninput="handleRateChange(this)">${state.rate}</span></td>
+              <td class="col-hrs num sync-total-hrs">${totalHours.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1})}</td>
+              <td class="col-tot num sync-amount">$${amount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="totals-area">
+          <div class="total-line">
+            <span class="total-label">Balance Due</span>
+            <span class="total-val sync-amount">$${amount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+          </div>
+        </div>
+
+        <div class="footer-box">
+          <div class="addr-text editable-block" contenteditable="true" style="font-size:11px;">${state.bankDetails}</div>
+        </div>
+      </div>
+    `;
+    stack.appendChild(page1);
+
+    // ----- TIMESHEET PAGES -----
+    const rowsPerPage = 22; 
+    const chunks = [];
+    for(let i=0; i < state.timesheet.length; i+=rowsPerPage){
+      chunks.push(state.timesheet.slice(i, i+rowsPerPage));
+    }
+
+    let globalRowIdx = 0;
+    chunks.forEach((chunk, idx) => {
+      const isLast = idx === chunks.length - 1;
+      
+      const tsRows = chunk.map(r => {
+        const dParts = r.date ? r.date.split('-') : null;
+        let dateStr = '', dayStr = '';
+        if(dParts && dParts.length === 3) {
+          const localDate = new Date(parseInt(dParts[0]), parseInt(dParts[1])-1, parseInt(dParts[2]));
+          dateStr = localDate.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+          dayStr = localDate.toLocaleDateString('en-US', {weekday:'short'});
+        }
+
+        const displayHours = r.hours === 0 ? "0" : r.hours;
+
+        const rowHTML = `
+          <tr>
+            <td class="ts-date">${dateStr} <span style="color:#999; font-size:10px;">${dayStr}</span></td>
+            <td class="ts-notes"><div class="editable-block" contenteditable="true" onblur="state.timesheet[${globalRowIdx}].notes=this.innerText">${r.notes}</div></td>
+            <td class="ts-hrs num"><span class="editable" contenteditable="true" oninput="handleHourChange(${globalRowIdx}, this)">${displayHours}</span></td>
+          </tr>
+        `;
+        globalRowIdx++;
+        return rowHTML;
+      }).join('');
+
+      const tsPage = document.createElement('div');
+      tsPage.className = 'pdf-page';
+      tsPage.innerHTML = `
+        <div class="page-pad">
+          <div class="top-row" style="margin-bottom:20px;">
+            <div>
+              <div class="consultant-name editable-block" contenteditable="true" style="font-size:24px;">Service Log</div>
+              <div class="consultant-role sync-name">${state.myName}</div>
+            </div>
+            <div class="invoice-meta">
+               <div class="meta-line">Page ${idx+1} of ${chunks.length}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th class="ts-date">Date</th>
+                <th class="ts-notes">Activity / Notes</th>
+                <th class="ts-hrs num">Hours</th>
+              </tr>
+            </thead>
+            <tbody>${tsRows}</tbody>
+          </table>
+
+          ${isLast ? `
+            <div class="totals-area" style="border-top:1px solid #ccc; padding-top:10px;">
+              <div class="total-line">
+                <span class="total-label">Total Hours</span>
+                <span class="total-val sync-total-hrs" style="font-size:18px;">${totalHours.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1})}</span>
+              </div>
+            </div>
+
+            <div class="sig-block">
+              <div class="sig-item">
+                <div class="sig-img editable-block" contenteditable="true">${state.sigName}</div>
+                <div class="sig-sub">Authorized Signature</div>
+              </div>
+              <div class="sig-item">
+                <div class="editable-block" contenteditable="true" style="font-family:var(--font-serif); font-size:14px; margin-bottom:15px; margin-top:10px;">${new Date().toLocaleDateString()}</div>
+                <div class="sig-sub">Date</div>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+      stack.appendChild(tsPage);
+    });
+  }
+
+  /* --- HIGH-RES PDF EXPORT (<12MB) --- */
+  async function downloadPDF(){
+    const btn = document.getElementById('downloadBtn');
+    btn.textContent = "Processing...";
+    btn.disabled = true;
+
+    // Temporarily hide editable dashed lines
+    document.body.classList.add('exporting');
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pages = document.querySelectorAll('.pdf-page');
+
+    for(let i=0; i<pages.length; i++){
+      if(i > 0) doc.addPage();
+      
+      const canvas = await html2canvas(pages[i], {
+        scale: 10, 
+        useCORS: true,
+        backgroundColor: "#fdfbf7",
+        logging: false
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      doc.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'SLOW');
+    }
+
+    document.body.classList.remove('exporting');
+
+    const dynamicInvNum = document.querySelector('.invoice-meta .editable').innerText.trim() || state.invNum;
+    doc.save(`Invoice_${dynamicInvNum}.pdf`);
+    
+    btn.textContent = "Download High-Res PDF";
+    btn.disabled = false;
+  }
+
+  // Start Application
+  init();
+
+</script>
+</body>
+</html>
