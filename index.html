@@ -290,14 +290,15 @@
     let workingDays = state.timesheet.filter(d => d.notes !== "HOLIDAY");
     const N = workingDays.length;
 
-    if (N < 10) {
+    if (N < 9) {
       alert("Not enough working days to fulfill the minimum frequency requirements.");
       return;
     }
 
-    // Step 1: Constraint check to guarantee the mandatory minimums (at least two of each number)
-    const MIN_HOURS = (7 * (N - 10)) + 80; // 80 is the sum of [7,7, 7.5,7.5, 8,8, 8.5,8.5, 9,9]
-    const MAX_HOURS = (9 * (N - 10)) + 80; 
+    // Step 1: Constraint check to guarantee the mandatory minimums 
+    const lockedSum = 76.5; // 2×7.5 + 3×8.5 + 4×9
+    const MIN_HOURS = lockedSum + (7.5 * (N - 9));
+    const MAX_HOURS = lockedSum + (9 * (N - 9)); 
 
     let capped = false;
     if (targetHours > MAX_HOURS) {
@@ -308,23 +309,23 @@
         capped = true;
     }
 
-    // Step 2: The Mandatory Locked Array (Guarantees every number appears exactly twice)
-    const lockedBase = [7, 7, 7.5, 7.5, 8, 8, 8.5, 8.5, 9, 9];
+    // Step 2: The Mandatory Locked Array (Guarantees the desired base counts: 2×7.5, 3×8.5, 4×9)
+    const lockedBase = [7.5, 7.5, 8.5, 8.5, 8.5, 9, 9, 9, 9];
     
-    // Step 3: The Priority Flexible Array (Defaults completely to 8)
-    let flexBase = Array(N - 10).fill(8);
+    // Step 3: The Priority Flexible Array (Defaults completely to 8 - maximized for more 8 hours)
+    let flexBase = Array(N - 9).fill(8);
     
-    let currentTotal = 80 + (8 * flexBase.length);
+    let currentTotal = lockedSum + (8 * flexBase.length);
     let diff = Math.round((targetHours - currentTotal) * 2) / 2;
 
-    // Absorb the Difference using strictly 9s and 7s (Ensuring 7.5 and 8.5 remain exceedingly rare)
+    // Absorb the Difference using strictly 9s and 7.5s 
     for (let i = 0; i < flexBase.length && diff >= 1; i++) {
         flexBase[i] = 9;
         diff -= 1;
     }
-    for (let i = 0; i < flexBase.length && diff <= -1; i++) {
-        flexBase[i] = 7;
-        diff += 1;
+    for (let i = 0; i < flexBase.length && diff <= -0.5; i++) {
+        flexBase[i] = 7.5;
+        diff += 0.5;
     }
     
     // If a fractional 0.5 remains, handle it EXACTLY ONCE
@@ -348,7 +349,7 @@
     };
 
     // Step 4: Chronological Routing (American Working Pattern)
-    // Initial days get 8, 7.5, 8.5. Ending days get 9, 7.
+    // Initial days get 8, 7.5, 8.5. Ending days get 9.
     shuffle(finalHours); // Pre-shuffle to randomize overflow elements
     
     let initialPool = [];
@@ -364,7 +365,7 @@
                 endPool.push(val);
             }
         } else {
-            // prefers End (9s and 7s)
+            // prefers End (9s)
             if (endPool.length < Math.floor(N / 2)) {
                 endPool.push(val);
             } else {
@@ -392,7 +393,7 @@
     const newAmount = targetHours * currentRate;
     if (Math.abs(newAmount - targetVal) > 0.01) {
         if (capped) {
-            alert(`Because all required numbers (7, 7.5, 8, 8.5, 9) must appear at least twice, the mathematical maximum possible amount is capped.\n\nAdjusted Target: $${newAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} (${targetHours} total hours)`);
+            alert(`Because all required numbers (7.5, 8, 8.5, 9) must appear with the preferred frequency (roughly 2-3 of 7.5, 3-4 of 8.5, 4-5 of 9 + rest 8s), the mathematical maximum possible amount is capped.\n\nAdjusted Target: $${newAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} (${targetHours} total hours)`);
         } else {
             alert(`Target was safely adjusted to the nearest valid 0.5 increment to keep hours realistic.\n\nNew Target: $${newAmount.toLocaleString('en-US', {minimumFractionDigits: 2})} (${targetHours} total hours)`);
         }
@@ -405,7 +406,7 @@
     const amount = (state.rate || 0) * totalHours;
 
     document.querySelectorAll('.sync-total-hrs').forEach(el => {
-        el.textContent = totalHours.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+        el.textContent = totalHours.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1});
     });
     
     document.querySelectorAll('.sync-amount').forEach(el => {
